@@ -1,0 +1,22 @@
+### POST request to create a new contact
+GET http://localhost:8080/contact/abcd
+Content-Type: application/json
+
+{
+    "name": "John Doe",
+    "age": 123,
+    "message": "Hello, this is a test message"
+}
+
+###
+
+GET http://localhost:8080/ping
+Content-Type: application/json
+
+{
+    "name": "John Doe",
+    "age": 123,
+    "message": "Hello, this is a test message"
+}
+
+###
