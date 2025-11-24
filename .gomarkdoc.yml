@@ -1,8 +1,0 @@
-output: "{{.Dir}}/README.md"
-header: |-
-  [![Go Report Card](https://goreportcard.com/badge/github.com/struct0x/hx)](https://goreportcard.com/report/github.com/struct0x/hx)
-  [![Go Reference](https://pkg.go.dev/badge/github.com/struct0x/hx.svg)](https://pkg.go.dev/github.com/struct0x/hx)
-repository:
-  url: https://github.com/struct0x/hx
-  defaultBranch: main
-  path: /
