@@ -468,6 +468,7 @@ func TestHX(t *testing.T) {
 				hx.WithProblemInstanceGetter(func(ctx context.Context) string {
 					return "inst-abc123"
 				}),
+				hx.WithCustomMux(http.NewServeMux()),
 			)
 			server.Handle("/"+url.PathEscape(tt.name), tt.handler)
 
@@ -487,11 +488,56 @@ func TestHX(t *testing.T) {
 	}
 }
 
+func TestHX_ErrorFromContext(t *testing.T) {
+	sentinel := errors.New("something went wrong")
+
+	tests := []struct {
+		name        string
+		handler     hx.HandlerFunc
+		expectedErr error
+	}{
+		{
+			name:        "captures handler error",
+			handler:     func(ctx context.Context, r *http.Request) error { return sentinel },
+			expectedErr: sentinel,
+		},
+		{
+			name:        "nil on success",
+			handler:     func(ctx context.Context, r *http.Request) error { return nil },
+			expectedErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedErr error
+			middleware := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					next.ServeHTTP(w, r)
+					capturedErr = hx.ErrorFromContext(r.Context())
+				})
+			}
+
+			server := hx.New(
+				hx.WithCustomMux(http.NewServeMux()),
+			)
+			server.Handle("/", tt.handler, middleware)
+
+			server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+
+			if !errors.Is(capturedErr, tt.expectedErr) {
+				t.Errorf("expected %v, got %v", tt.expectedErr, capturedErr)
+			}
+		})
+	}
+}
+
 func TestHX_HijackResponseWriter(t *testing.T) {
 	server := hx.New(
 		hx.WithProblemInstanceGetter(func(ctx context.Context) string {
 			return "inst-abc123"
 		}),
+		hx.WithCustomMux(http.NewServeMux()),
 	)
 	server.Handle("/", func(ctx context.Context, r *http.Request) error {
 		rw := hx.HijackResponseWriter(ctx)

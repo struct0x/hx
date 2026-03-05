@@ -15,6 +15,12 @@ import (
 	"github.com/struct0x/hx/internal/out"
 )
 
+// ErrorFromContext returns the handler error after the handler has returned.
+// Call this from middleware after invoking next.ServeHTTP.
+func ErrorFromContext(ctx context.Context) error {
+	return internal.ErrorFromContext(ctx)
+}
+
 // ProblemDetails is a JSON object that describes an error.
 // https://datatracker.ietf.org/doc/html/rfc9457
 type ProblemDetails = out.ProblemDetails
@@ -105,9 +111,13 @@ func (h *HX) Handle(pattern string, handler HandlerFunc, mids ...Middleware) {
 func (h *HX) handle(handler HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rwRead := new(atomic.Bool)
-		ctx := internal.WithResponseWriter(r.Context(), rwRead, w)
 
-		hxErr := handler(ctx, r.WithContext(ctx))
+		ctx := internal.WithResponseWriter(r.Context(), rwRead, w)
+		ctx, holder := internal.WithErrHolder(ctx)
+
+		*r = *r.WithContext(ctx)
+		hxErr := handler(ctx, r)
+		holder.Err = hxErr
 
 		if rwRead.Load() {
 			// Handler took control of the response writer.
