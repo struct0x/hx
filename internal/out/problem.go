@@ -89,6 +89,10 @@ func (p ProblemDetails) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
+func (p ProblemDetails) Unwrap() error {
+	return p.Cause
+}
+
 func (p ProblemDetails) Error() string {
 	s := strings.Builder{}
 	s.WriteString(p.Title)
