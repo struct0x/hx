@@ -117,7 +117,6 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 
 		*r = *r.WithContext(ctx)
 		hxErr := handler(ctx, r)
-		holder.Err = hxErr
 
 		if rwRead.Load() {
 			// Handler took control of the response writer.
@@ -135,6 +134,8 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 
 		var pd ProblemDetails
 		if errors.As(hxErr, &pd) {
+			holder.Err = hxErr
+
 			if pd.Cause != nil {
 				h.logger.Error("hx: request failed",
 					"method", r.Method,
@@ -203,6 +204,7 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			return
 		}
 
+		holder.Err = hxErr
 		h.logger.ErrorContext(ctx, "hx: request with unknown error",
 			"method", r.Method,
 			"path", r.URL.Path,
