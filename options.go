@@ -43,6 +43,13 @@ func WithMiddlewares(m ...Middleware) Opt {
 	})
 }
 
+// WithProductionMode enables or disables production mode.
+func WithProductionMode(enabled bool) Opt {
+	return hxOptFunc(func(cfg *HX) {
+		cfg.production = enabled
+	})
+}
+
 // WithProblemInstanceGetter sets a function that provides the "instance" value
 // for ProblemDetails. This is particularly useful in distributed tracing scenarios
 // or when using error tracking systems like Sentry, as it allows linking specific

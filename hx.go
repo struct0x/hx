@@ -10,17 +10,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/justinas/alice"
-
 	"github.com/struct0x/hx/internal"
 	"github.com/struct0x/hx/internal/out"
 )
-
-// ErrorFromContext returns the handler error after the handler has returned.
-// Call this from middleware after invoking next.ServeHTTP.
-func ErrorFromContext(ctx context.Context) error {
-	return internal.ErrorFromContext(ctx)
-}
 
 // ProblemDetails is a JSON object that describes an error.
 // https://datatracker.ietf.org/doc/html/rfc9457
@@ -54,9 +46,6 @@ type Mux interface {
 	Handle(pattern string, handler http.Handler)
 }
 
-// Middleware is a function that wraps a HandlerFunc.
-type Middleware = alice.Constructor
-
 // HX is a framework for building HTTP APIs with enhanced error handling and middleware support.
 // It provides a convenient way to handle HTTP requests, manage middleware chains, and standardize
 // error responses using ProblemDetails (RFC 9457).
@@ -78,10 +67,11 @@ type Middleware = alice.Constructor
 //	// Start the server
 //	http.ListenAndServe(":8080", hx)
 type HX struct {
-	logger *slog.Logger
-	mux    Mux
-	mids   []Middleware
-	prefix string
+	logger     *slog.Logger
+	mux        Mux
+	mids       []Middleware
+	prefix     string
+	production bool
 
 	problemInstanceGetter func(ctx context.Context) string
 }
@@ -106,8 +96,10 @@ func (h *HX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Handle registers a new request handler with the given pattern and middleware.
 func (h *HX) Handle(pattern string, handler HandlerFunc, mids ...Middleware) {
-	mid := alice.New(h.mids...).Append(mids...)
-	h.mux.Handle(buildPattern(h.prefix, pattern), mid.Then(h.handle(handler)))
+	all := make([]Middleware, len(h.mids), len(h.mids)+len(mids))
+	copy(all, h.mids)
+	all = append(all, mids...)
+	h.mux.Handle(buildPattern(h.prefix, pattern), h.handle(chain(handler, all)))
 }
 
 // Group creates a sub-router sharing the same mux, with the given path prefix
@@ -129,6 +121,7 @@ func (h *HX) Group(prefix string, mids ...Middleware) *HX {
 		mux:                   h.mux,
 		prefix:                h.prefix + prefix,
 		mids:                  append(inherited, mids...),
+		production:            h.production,
 		problemInstanceGetter: h.problemInstanceGetter,
 	}
 }
@@ -147,13 +140,7 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 		rwRead := new(atomic.Bool)
 
 		ctx := internal.WithResponseWriter(r.Context(), rwRead, w)
-		ctx, holder := internal.WithErrHolder(ctx)
-
-		// Rewrite *r in place so that middleware wrapping this handler can call
-		// r.Context() after next.ServeHTTP returns and still reach the hx context
-		// (e.g. to read the handler error via ErrorFromContext).
-		*r = *r.WithContext(ctx)
-		hxErr := handler(ctx, r)
+		hxErr := handler(ctx, r.WithContext(ctx))
 
 		if rwRead.Load() {
 			// Handler took control of the response writer.
@@ -171,8 +158,6 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 
 		var pd ProblemDetails
 		if errors.As(hxErr, &pd) {
-			holder.Err = hxErr
-
 			if pd.Cause != nil {
 				h.logger.Error("hx: request failed",
 					"method", r.Method,
@@ -241,7 +226,6 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			return
 		}
 
-		holder.Err = hxErr
 		h.logger.ErrorContext(ctx, "hx: request with unknown error",
 			"method", r.Method,
 			"path", r.URL.Path,

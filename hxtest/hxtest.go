@@ -131,7 +131,7 @@ func materialize(t testing.TB, hxErr error) *Result {
 		}
 	}
 
-	var resp *out.Response
+	var resp out.Response
 	if errors.As(hxErr, &resp) {
 		return &Result{
 			ContentType: resp.ContentType,
@@ -238,7 +238,7 @@ func ProblemTitle(substr string) Check {
 func ProblemDetail(substr string) Check {
 	return func(t testing.TB, r *Result) {
 		t.Helper()
-		if r.Problem == nil || strings.Contains(r.Problem.Detail, substr) {
+		if r.Problem == nil || !strings.Contains(r.Problem.Detail, substr) {
 			t.Fatalf("problem detail does not contain %q; got %q", substr, r.Problem.Detail)
 		}
 	}

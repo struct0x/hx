@@ -488,48 +488,178 @@ func TestHX(t *testing.T) {
 	}
 }
 
-func TestHX_ErrorFromContext(t *testing.T) {
-	sentinel := errors.New("something went wrong")
+func TestHX_Group(t *testing.T) {
+	type check func(t *testing.T, wr *httptest.ResponseRecorder)
+	checks := func(ch ...check) []check { return ch }
+
+	hasStatus := func(status int) check {
+		return func(t *testing.T, wr *httptest.ResponseRecorder) {
+			if wr.Code != status {
+				t.Errorf("expected status %d, got %d", status, wr.Code)
+			}
+		}
+	}
+
+	hasBody := func(body string) check {
+		return func(t *testing.T, wr *httptest.ResponseRecorder) {
+			if strings.TrimSpace(wr.Body.String()) != body {
+				t.Errorf("expected body %q, got %q", body, wr.Body.String())
+			}
+		}
+	}
 
 	tests := []struct {
-		name        string
-		handler     hx.HandlerFunc
-		expectedErr error
+		name   string
+		setup  func(server *hx.HX)
+		method string
+		path   string
+		checks []check
 	}{
 		{
-			name:        "captures handler error",
-			handler:     func(ctx context.Context, r *http.Request) error { return sentinel },
-			expectedErr: sentinel,
+			name: "prefix_is_applied",
+			setup: func(server *hx.HX) {
+				api := server.Group("/api/v1")
+				api.Handle("/users", func(ctx context.Context, r *http.Request) error {
+					return hx.OK("users")
+				})
+			},
+			method: "GET",
+			path:   "/api/v1/users",
+			checks: checks(
+				hasStatus(http.StatusOK),
+				hasBody(`"users"`),
+			),
 		},
 		{
-			name:        "nil on success",
-			handler:     func(ctx context.Context, r *http.Request) error { return nil },
-			expectedErr: nil,
+			name: "method_pattern_is_handled",
+			setup: func(server *hx.HX) {
+				api := server.Group("/api/v1")
+				api.Handle("POST /orders", func(ctx context.Context, r *http.Request) error {
+					return hx.Created("order created")
+				})
+			},
+			method: "POST",
+			path:   "/api/v1/orders",
+			checks: checks(
+				hasStatus(http.StatusCreated),
+				hasBody(`"order created"`),
+			),
+		},
+		{
+			name: "nested_group_compounds_prefix",
+			setup: func(server *hx.HX) {
+				api := server.Group("/api/v1")
+				admin := api.Group("/admin")
+				admin.Handle("/stats", func(ctx context.Context, r *http.Request) error {
+					return hx.OK("stats")
+				})
+			},
+			method: "GET",
+			path:   "/api/v1/admin/stats",
+			checks: checks(
+				hasStatus(http.StatusOK),
+				hasBody(`"stats"`),
+			),
+		},
+		{
+			name: "method_pattern_in_nested_group",
+			setup: func(server *hx.HX) {
+				api := server.Group("/api/v1")
+				admin := api.Group("/admin")
+				admin.Handle("DELETE /users", func(ctx context.Context, r *http.Request) error {
+					return hx.OK("deleted")
+				})
+			},
+			method: "DELETE",
+			path:   "/api/v1/admin/users",
+			checks: checks(
+				hasStatus(http.StatusOK),
+				hasBody(`"deleted"`),
+			),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var capturedErr error
-			middleware := func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					next.ServeHTTP(w, r)
-					capturedErr = hx.ErrorFromContext(r.Context())
-				})
-			}
+			server := hx.New(hx.WithCustomMux(http.NewServeMux()))
+			tt.setup(server)
 
-			server := hx.New(
-				hx.WithCustomMux(http.NewServeMux()),
-			)
-			server.Handle("/", tt.handler, middleware)
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			w := httptest.NewRecorder()
+			server.ServeHTTP(w, req)
 
-			server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
-
-			if !errors.Is(capturedErr, tt.expectedErr) {
-				t.Errorf("expected %v, got %v", tt.expectedErr, capturedErr)
+			for _, check := range tt.checks {
+				check(t, w)
 			}
 		})
 	}
+}
+
+func TestHX_Group_Middleware(t *testing.T) {
+	recordingMiddleware := func(name string, calls *[]string) hx.Middleware {
+		return func(next hx.HandlerFunc) hx.HandlerFunc {
+			return func(ctx context.Context, r *http.Request) error {
+				*calls = append(*calls, name)
+				return next(ctx, r)
+			}
+		}
+	}
+
+	noop := func(ctx context.Context, r *http.Request) error { return hx.OK("ok") }
+
+	t.Run("group_middleware_is_applied", func(t *testing.T) {
+		var calls []string
+		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
+		api := server.Group("/api", recordingMiddleware("group", &calls))
+		api.Handle("/ping", noop)
+
+		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/ping", nil))
+
+		if len(calls) != 1 || calls[0] != "group" {
+			t.Errorf("expected [group], got %v", calls)
+		}
+	})
+
+	t.Run("nested_group_inherits_parent_middleware", func(t *testing.T) {
+		var calls []string
+		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
+		api := server.Group("/api", recordingMiddleware("parent", &calls))
+		admin := api.Group("/admin", recordingMiddleware("child", &calls))
+		admin.Handle("/stats", noop)
+
+		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/admin/stats", nil))
+
+		if len(calls) != 2 || calls[0] != "parent" || calls[1] != "child" {
+			t.Errorf("expected [parent child], got %v", calls)
+		}
+	})
+
+	t.Run("handler_middleware_stacks_on_group", func(t *testing.T) {
+		var calls []string
+		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
+		api := server.Group("/api", recordingMiddleware("group", &calls))
+		api.Handle("/ping", noop, recordingMiddleware("handler", &calls))
+
+		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/ping", nil))
+
+		if len(calls) != 2 || calls[0] != "group" || calls[1] != "handler" {
+			t.Errorf("expected [group handler], got %v", calls)
+		}
+	})
+
+	t.Run("sibling_groups_do_not_share_middleware", func(t *testing.T) {
+		var calls []string
+		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
+		api := server.Group("/api")
+		api.Group("/a", recordingMiddleware("mid-a", &calls)).Handle("/ping", noop)
+		api.Group("/b").Handle("/ping", noop)
+
+		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/b/ping", nil))
+
+		if len(calls) != 0 {
+			t.Errorf("expected no middleware calls for /b, got %v", calls)
+		}
+	})
 }
 
 func TestHX_HijackResponseWriter(t *testing.T) {

@@ -5,7 +5,6 @@ go 1.24.4
 require (
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/google/go-cmp v0.7.0
-	github.com/justinas/alice v1.2.0
 	github.com/struct0x/crum v0.1.0
 )
 
