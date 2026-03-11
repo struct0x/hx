@@ -41,6 +41,9 @@ func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 				"status", statusFromErr(err),
 				"duration", time.Since(start),
 			}
+			if cause := errors.Unwrap(err); cause != nil {
+				attrs = append(attrs, "cause", cause)
+			}
 
 			for _, fn := range extras {
 				for _, a := range fn(ctx, r) {
