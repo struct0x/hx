@@ -673,7 +673,7 @@ func TestHX_HijackResponseWriter(t *testing.T) {
 		rw := hx.HijackResponseWriter(ctx)
 
 		rw.Write([]byte("hello"))
-		return hx.NoContent()
+		return nil
 	})
 
 	// Create a test request

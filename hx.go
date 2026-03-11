@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -143,6 +144,10 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 		hxErr := handler(ctx, r.WithContext(ctx))
 
 		if rwRead.Load() {
+			if !h.production && hxErr != nil {
+				panic(fmt.Sprintf("hx: hijacked response writer, but handler returned error: %v", hxErr))
+			}
+
 			// Handler took control of the response writer.
 			// No need to write anything.
 			return
@@ -152,9 +157,7 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			if !h.production {
 				panic("hx: handler returned nil; use hx.NoContent() for 204 responses")
 			}
-			h.logger.ErrorContext(ctx, "hx: handler returned nil",
-				"method", r.Method,
-				"path", r.URL.Path)
+
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -163,13 +166,6 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 
 		var pd ProblemDetails
 		if errors.As(hxErr, &pd) {
-			if pd.Cause != nil {
-				h.logger.Error("hx: request failed",
-					"method", r.Method,
-					"path", r.URL.Path,
-					"error", pd.Cause)
-			}
-
 			if h.problemInstanceGetter != nil && pd.Instance == "" {
 				pd.Instance = h.problemInstanceGetter(ctx)
 			}
@@ -232,11 +228,6 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 
 			return
 		}
-
-		h.logger.ErrorContext(ctx, "hx: request with unknown error",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"error", hxErr)
 
 		w.WriteHeader(http.StatusInternalServerError)
 
