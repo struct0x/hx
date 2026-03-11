@@ -26,7 +26,7 @@ type Response = out.Response
 // Context is identical to http.Request.Context, but it includes a ResponseWriter that can be hijacked.
 //
 // If HandlerFunc returns:
-// - nil: the response will be 204 No Content
+// - nil: panics in dev mode, 500 in production — use hx.NoContent() for 204 responses
 // - ProblemDetails: the response will be encoded as application/problem+json
 // - Response: the response will be encoded as application/json with custom headers
 // - any other error: the response will be 500 Internal Server Error
@@ -149,8 +149,13 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 		}
 
 		if hxErr == nil {
-			// Nil errors mean 204 No Content
-			w.WriteHeader(http.StatusNoContent)
+			if !h.production {
+				panic("hx: handler returned nil; use hx.NoContent() for 204 responses")
+			}
+			h.logger.ErrorContext(ctx, "hx: handler returned nil",
+				"method", r.Method,
+				"path", r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
@@ -219,8 +224,10 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 				return
 			}
 
-			if err := enc.Encode(resp.Body); err != nil {
-				h.logger.ErrorContext(ctx, "hx: error encoding response body", "error", err)
+			if resp.Body != nil {
+				if err := enc.Encode(resp.Body); err != nil {
+					h.logger.ErrorContext(ctx, "hx: error encoding response body", "error", err)
+				}
 			}
 
 			return

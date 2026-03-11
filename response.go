@@ -12,6 +12,11 @@ func OK(body any, opts ...ResponseOpt) Response {
 	return Respond(http.StatusOK, body, opts...)
 }
 
+// NoContent creates an HTTP response with a 204 (No Content) status code.
+func NoContent() Response {
+	return Response{StatusCode: http.StatusNoContent}
+}
+
 // Created creates an HTTP response with a 201 (Created) status code.
 // It accepts a body of any type and optional response modifiers.
 func Created(body any, opts ...ResponseOpt) Response {

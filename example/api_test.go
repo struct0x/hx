@@ -20,7 +20,7 @@ func (m *OrderServiceMock) CreateOrder(ctx context.Context, userID, product stri
 	return m.createOrder(ctx, userID, product, quantity)
 }
 
-func (m *OrderServiceMock) GetOrder(_ context.Context, _ string) (*Order, error)          { return nil, nil }
+func (m *OrderServiceMock) GetOrder(_ context.Context, _ string) (*Order, error) { return nil, nil }
 func (m *OrderServiceMock) GetUserOrders(_ context.Context, _, _, _ string, _ int) ([]Order, error) {
 	return nil, nil
 }

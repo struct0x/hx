@@ -110,9 +110,9 @@ func TestHX(t *testing.T) {
 			),
 		},
 		{
-			name: "nil_response",
+			name: "no_content_response",
 			handler: func(ctx context.Context, r *http.Request) error {
-				return nil
+				return hx.NoContent()
 			},
 			method: "GET",
 			checks: checks(
@@ -673,7 +673,7 @@ func TestHX_HijackResponseWriter(t *testing.T) {
 		rw := hx.HijackResponseWriter(ctx)
 
 		rw.Write([]byte("hello"))
-		return nil
+		return hx.NoContent()
 	})
 
 	// Create a test request
