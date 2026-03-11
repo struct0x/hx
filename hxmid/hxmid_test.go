@@ -88,6 +88,54 @@ func TestLogger(t *testing.T) {
 	}
 }
 
+func TestLogger_ExtraAttrs(t *testing.T) {
+	var gotAttrs []slog.Attr
+
+	h := &capturingHandler{fn: func(r slog.Record) {
+		r.Attrs(func(a slog.Attr) bool {
+			gotAttrs = append(gotAttrs, a)
+			return true
+		})
+	}}
+
+	srv := newServer(t,
+		func(ctx context.Context, r *http.Request) error { return hx.OK("ok") },
+		hxmid.Logger(slog.New(h),
+			func(ctx context.Context, r *http.Request) []slog.Attr {
+				return []slog.Attr{slog.String("trace_id", "abc-123")}
+			},
+			func(ctx context.Context, r *http.Request) []slog.Attr {
+				return []slog.Attr{slog.String("user_id", r.Header.Get("X-User-ID"))}
+			},
+		),
+	)
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("X-User-ID", "user-42")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	find := func(key string) (string, bool) {
+		for _, a := range gotAttrs {
+			if a.Key == key {
+				return a.Value.String(), true
+			}
+		}
+		return "", false
+	}
+
+	if v, ok := find("trace_id"); !ok || v != "abc-123" {
+		t.Errorf("trace_id: got %q, want %q", v, "abc-123")
+	}
+	if v, ok := find("user_id"); !ok || v != "user-42" {
+		t.Errorf("user_id: got %q, want %q", v, "user-42")
+	}
+}
+
 func TestRecoverer(t *testing.T) {
 	t.Run("recovers_panic_and_returns_500", func(t *testing.T) {
 		srv := newServer(t,

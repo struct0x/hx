@@ -14,10 +14,22 @@ import (
 	"github.com/struct0x/hx"
 )
 
+// AttrsFunc extracts additional slog attributes from the request context.
+// Use this to attach trace IDs, user IDs, or any other contextual fields to log entries.
+type AttrsFunc func(ctx context.Context, r *http.Request) []slog.Attr
+
 // Logger logs each request with its method, path, status code, and duration.
 // Requests resulting in 5xx are logged at Error level, 4xx at Warn, everything
 // else at Info.
-func Logger(log *slog.Logger) hx.Middleware {
+//
+// Additional attributes can be injected per-request via optional AttrsFuncs:
+//
+//	hxmid.Logger(log, func(ctx context.Context, r *http.Request) []slog.Attr {
+//	    return []slog.Attr{
+//	        slog.String("trace_id", trace.SpanFromContext(ctx).SpanContext().TraceID().String()),
+//	    }
+//	})
+func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 	return func(next hx.HandlerFunc) hx.HandlerFunc {
 		return func(ctx context.Context, r *http.Request) error {
 			start := time.Now()
@@ -28,6 +40,12 @@ func Logger(log *slog.Logger) hx.Middleware {
 				"path", r.URL.Path,
 				"status", statusFromErr(err),
 				"duration", time.Since(start),
+			}
+
+			for _, fn := range extras {
+				for _, a := range fn(ctx, r) {
+					attrs = append(attrs, a)
+				}
 			}
 
 			switch status := statusFromErr(err); {
