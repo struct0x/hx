@@ -22,7 +22,7 @@ const (
 type fieldInfo struct {
 	src      source
 	tagValue string
-	fieldIdx any
+	fieldIdx []int
 	value    reflect.Value
 }
 
@@ -140,17 +140,10 @@ func collectFields(t reflect.Type, indexPath []int, fields *[]fieldInfo) error {
 	return nil
 }
 
-func getFieldByPath(v reflect.Value, fieldIdx any) reflect.Value {
-	switch idx := fieldIdx.(type) {
-	case int:
-		return v.Field(idx)
-	case []int:
-		current := v
-		for _, i := range idx {
-			current = current.Field(i)
-		}
-		return current
-	default:
-		panic(fmt.Sprintf("unexpected fieldIdx type: %T", fieldIdx))
+func getFieldByPath(v reflect.Value, fieldIdx []int) reflect.Value {
+	current := v
+	for _, i := range fieldIdx {
+		current = current.Field(i)
 	}
+	return current
 }

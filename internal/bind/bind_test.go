@@ -42,7 +42,7 @@ func TestBind(t *testing.T) {
 			},
 			run: func(t *testing.T, req *http.Request, opts []Opt) {
 				type target struct{}
-				err := Bind[target](nil, nil, opts...)
+				err := Bind(nil, nil, opts...)
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
@@ -58,7 +58,7 @@ func TestBind(t *testing.T) {
 			},
 			run: func(t *testing.T, req *http.Request, opts []Opt) {
 				type target struct{}
-				err := Bind[target](req, nil, opts...)
+				err := Bind(req, nil, opts...)
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}

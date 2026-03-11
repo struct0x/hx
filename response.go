@@ -8,13 +8,13 @@ import (
 
 // OK creates a successful HTTP response with a 200 (OK) status code.
 // It accepts a body of any type and optional response modifiers.
-func OK(body any, opts ...ResponseOpt) *Response {
+func OK(body any, opts ...ResponseOpt) Response {
 	return Respond(http.StatusOK, body, opts...)
 }
 
 // Created creates an HTTP response with a 201 (Created) status code.
 // It accepts a body of any type and optional response modifiers.
-func Created(body any, opts ...ResponseOpt) *Response {
+func Created(body any, opts ...ResponseOpt) Response {
 	return Respond(http.StatusCreated, body, opts...)
 }
 
@@ -22,13 +22,6 @@ func Created(body any, opts ...ResponseOpt) *Response {
 // It accepts a body of any type and optional response modifiers.
 func BadRequest(title string, opts ...ProblemOpt) ProblemDetails {
 	return Problem(http.StatusBadRequest, title, opts...)
-}
-
-// NotAllowed creates an HTTP response with a 405 (Method Not Allowed) status code.
-// It accepts a title string describing the error and optional response modifiers.
-// Returns a ProblemDetails object that represents the error response.
-func NotAllowed(title string, opts ...ProblemOpt) ProblemDetails {
-	return Problem(http.StatusMethodNotAllowed, title, opts...)
 }
 
 // Unauthorized creates an HTTP response with a 401 (Unauthorized) status code.
@@ -68,7 +61,7 @@ func Internal(title string, opts ...ProblemOpt) ProblemDetails {
 
 // Respond creates an HTTP response with the specified status code and body.
 // It accepts a status code, a body of any type, and optional response modifiers.
-func Respond(status int, body any, opts ...ResponseOpt) *Response {
+func Respond(status int, body any, opts ...ResponseOpt) Response {
 	r := out.Response{
 		ContentType: "application/json",
 		StatusCode:  status,
@@ -79,5 +72,5 @@ func Respond(status int, body any, opts ...ResponseOpt) *Response {
 		o.applyResponseOpt(&r)
 	}
 
-	return &r
+	return r
 }

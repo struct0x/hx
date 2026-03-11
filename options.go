@@ -62,8 +62,6 @@ func WithProblemInstanceGetter(f func(ctx context.Context) string) Opt {
 type ResponseOpt interface {
 	// applyResponseOpt applies the option to a Response object.
 	applyResponseOpt(*Response)
-	// applyProblemOpt applies the option to a ProblemDetails object.
-	applyProblemOpt(*ProblemDetails)
 }
 
 type ProblemOpt interface {
@@ -75,20 +73,17 @@ type ProblemOpt interface {
 // The provided content type string will be used as the value for the Content-Type header.
 // This option only affects Response objects and has no effect on ProblemDetails.
 // For ProblemDetails, the Content-Type is always set to "application/problem+json".
-func WithContentType(ct string) ResponseOpt {
-	return responseOpt{
-		responseOpt: func(r *Response) {
-			r.ContentType = ct
-		},
-		problemOpt: func(details *ProblemDetails) {},
+func WithContentType(ct string) responseOpt {
+	return func(r *Response) {
+		r.ContentType = ct
 	}
 }
 
 // WithHeaders sets custom HTTP headers for the response. It accepts an http.Header
 // map and returns a ResponseOpt that can be used to modify a Response object.
 // The provided headers will be used in the final HTTP response.
-func WithHeaders(headers http.Header) ResponseOpt {
-	return responseOpt{
+func WithHeaders(headers http.Header) sharedOpt {
+	return sharedOpt{
 		responseOpt: func(r *Response) {
 			r.Headers = headers
 		},
@@ -101,8 +96,8 @@ func WithHeaders(headers http.Header) ResponseOpt {
 // WithCookie adds an HTTP cookie to the response. It accepts a pointer to an http.Cookie
 // and returns a ResponseOpt that can be used to modify a Response object.
 // The provided cookie will be included in the final HTTP response.
-func WithCookie(c *http.Cookie) ResponseOpt {
-	return responseOpt{
+func WithCookie(c *http.Cookie) sharedOpt {
+	return sharedOpt{
 		responseOpt: func(r *Response) {
 			if r.Cookies == nil {
 				r.Cookies = []*http.Cookie{}
@@ -122,8 +117,8 @@ func WithCookie(c *http.Cookie) ResponseOpt {
 // WithHeader sets a single HTTP header for the response. It accepts a key-value pair
 // representing the header name and value, and returns a ResponseOpt that can be used
 // to modify a Response object. The provided header will be added to the final HTTP response.
-func WithHeader(key, value string) ResponseOpt {
-	return responseOpt{
+func WithHeader(key, value string) sharedOpt {
+	return sharedOpt{
 		responseOpt: func(r *Response) {
 			if r.Headers == nil {
 				r.Headers = http.Header{}
@@ -140,23 +135,27 @@ func WithHeader(key, value string) ResponseOpt {
 	}
 }
 
-type responseOpt struct {
+type sharedOpt struct {
 	responseOpt func(*Response)
 	problemOpt  func(*ProblemDetails)
 }
 
-func (r responseOpt) applyResponseOpt(resp *Response) {
+func (r sharedOpt) applyResponseOpt(resp *Response) {
 	r.responseOpt(resp)
 }
 
-func (r responseOpt) applyProblemOpt(details *ProblemDetails) {
+func (r sharedOpt) applyProblemOpt(details *ProblemDetails) {
 	r.problemOpt(details)
 }
 
-type problemOptFunc func(*ProblemDetails)
+type responseOpt func(*Response)
 
-func (f problemOptFunc) applyResponseOpt(*Response) {}
+func (f responseOpt) applyResponseOpt(r *Response) {
+	f(r)
+}
 
-func (f problemOptFunc) applyProblemOpt(p *ProblemDetails) {
+type problemOpt func(*ProblemDetails)
+
+func (f problemOpt) applyProblemOpt(p *ProblemDetails) {
 	f(p)
 }

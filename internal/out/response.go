@@ -13,6 +13,6 @@ type Response struct {
 	Cookies     []*http.Cookie
 }
 
-func (r *Response) Error() string {
+func (r Response) Error() string {
 	return fmt.Sprintf("responding with: %d", r.StatusCode)
 }

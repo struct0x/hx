@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"github.com/justinas/alice"
@@ -64,7 +65,7 @@ type Middleware = alice.Constructor
 //
 //	hx := hx.New(
 //	    hx.WithLogger(slog.Default()),
-//	    hx.WithMux(http.NewServeMux()),
+//	    hx.WithCustomMux(http.NewServeMux()),
 //	    hx.WithMiddleware(loggingMiddleware),
 //	)
 //
@@ -80,6 +81,7 @@ type HX struct {
 	logger *slog.Logger
 	mux    Mux
 	mids   []Middleware
+	prefix string
 
 	problemInstanceGetter func(ctx context.Context) string
 }
@@ -105,7 +107,39 @@ func (h *HX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Handle registers a new request handler with the given pattern and middleware.
 func (h *HX) Handle(pattern string, handler HandlerFunc, mids ...Middleware) {
 	mid := alice.New(h.mids...).Append(mids...)
-	h.mux.Handle(pattern, mid.Then(h.handle(handler)))
+	h.mux.Handle(buildPattern(h.prefix, pattern), mid.Then(h.handle(handler)))
+}
+
+// Group creates a sub-router sharing the same mux, with the given path prefix
+// and additional middlewares appended to the current chain.
+//
+// Example:
+//
+//	api := server.Group("/api/v1", authMiddleware)
+//	api.Handle("POST /users", createUserHandler)   // registers "POST /api/v1/users"
+//	api.Handle("/orders", listOrdersHandler)        // registers "/api/v1/orders"
+//
+//	admin := api.Group("/admin", adminOnlyMiddleware)
+//	admin.Handle("/stats", statsHandler)            // registers "/api/v1/admin/stats"
+func (h *HX) Group(prefix string, mids ...Middleware) *HX {
+	inherited := make([]Middleware, len(h.mids), len(h.mids)+len(mids))
+	copy(inherited, h.mids)
+	return &HX{
+		logger:                h.logger,
+		mux:                   h.mux,
+		prefix:                h.prefix + prefix,
+		mids:                  append(inherited, mids...),
+		problemInstanceGetter: h.problemInstanceGetter,
+	}
+}
+
+// buildPattern prepends prefix to a ServeMux pattern, handling the optional
+// method prefix in Go 1.22+ patterns (e.g. "POST /path").
+func buildPattern(prefix, pattern string) string {
+	if i := strings.Index(pattern, " "); i != -1 {
+		return pattern[:i+1] + prefix + pattern[i+1:]
+	}
+	return prefix + pattern
 }
 
 func (h *HX) handle(handler HandlerFunc) http.Handler {
@@ -115,6 +149,9 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 		ctx := internal.WithResponseWriter(r.Context(), rwRead, w)
 		ctx, holder := internal.WithErrHolder(ctx)
 
+		// Rewrite *r in place so that middleware wrapping this handler can call
+		// r.Context() after next.ServeHTTP returns and still reach the hx context
+		// (e.g. to read the handler error via ErrorFromContext).
 		*r = *r.WithContext(ctx)
 		hxErr := handler(ctx, r)
 
@@ -173,7 +210,7 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			return
 		}
 
-		var resp *out.Response
+		var resp out.Response
 		if errors.As(hxErr, &resp) {
 			for _, c := range resp.Cookies {
 				http.SetCookie(w, c)
@@ -187,9 +224,9 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			}
 			w.WriteHeader(resp.StatusCode)
 
-			switch resp.Body.(type) {
+			switch body := resp.Body.(type) {
 			case io.Reader:
-				_, err := io.Copy(w, resp.Body.(io.Reader))
+				_, err := io.Copy(w, body)
 				if err != nil {
 					h.logger.ErrorContext(ctx, "hx: error copying response body", "error", err)
 					return

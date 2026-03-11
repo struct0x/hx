@@ -19,7 +19,6 @@ import (
 var (
 	ErrNilRequest     = errors.New("bind: request is nil")
 	ErrNilDestination = errors.New("bind: destination is nil")
-	ErrNotAPointer    = errors.New("bind: destination must be a pointer")
 	ErrNotAStruct     = errors.New("bind: destination must be a struct")
 	ErrExpectedStruct = errors.New("bind: expected struct")
 	ErrMultipleTags   = errors.New("bind: multiple tags")
@@ -65,7 +64,7 @@ func WithValidator(v *validator.Validate) Opt {
 
 var defaultValidator = validator.New()
 
-func Bind[T any](r *http.Request, dst *T, opts ...Opt) error {
+func Bind(r *http.Request, dst any, opts ...Opt) error {
 	if r == nil {
 		return ErrNilRequest
 	}

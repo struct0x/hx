@@ -130,7 +130,6 @@ func BindProblem(err error, summary string, opts ...ProblemOpt) error {
 	switch {
 	case errors.Is(err, bind.ErrNilRequest),
 		errors.Is(err, bind.ErrNilDestination),
-		errors.Is(err, bind.ErrNotAPointer),
 		errors.Is(err, bind.ErrNotAStruct),
 		errors.Is(err, bind.ErrExpectedStruct),
 		errors.Is(err, bind.ErrMultipleTags),
@@ -167,7 +166,6 @@ func BindProblem(err error, summary string, opts ...ProblemOpt) error {
 
 		pOpts = append(pOpts,
 			WithField(F("errors", fields)),
-			WithCause(err),
 		)
 
 		return Problem(
