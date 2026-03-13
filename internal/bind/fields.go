@@ -15,7 +15,6 @@ const (
 	srcPath
 	srcJSON
 	srcFile
-	srcForm
 )
 
 // fieldInfo describes a bindable struct field.
@@ -108,12 +107,6 @@ func collectFields(t reflect.Type, indexPath []int, fields *[]fieldInfo) error {
 
 		if v, ok := sf.Tag.Lookup("file"); ok {
 			tagSrc = srcFile
-			tagValue = v
-			tagCnt++
-		}
-
-		if v, ok := sf.Tag.Lookup("form"); ok {
-			tagSrc = srcForm
 			tagValue = v
 			tagCnt++
 		}

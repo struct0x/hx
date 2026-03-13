@@ -35,7 +35,7 @@ func WithValidator(v *validator.Validate) BindOpt {
 
 // Bind extracts data from an HTTP request into a destination struct.
 // It supports binding from multiple sources including URL query parameters, path variables,
-// headers, cookies, JSON body, form data, and multipart file uploads.
+// headers, cookies, JSON body, and multipart file uploads.
 //
 // The destination must be a pointer to a struct. Fields in the struct are bound based on
 // struct tags that specify the data source and field name:
@@ -45,7 +45,6 @@ func WithValidator(v *validator.Validate) BindOpt {
 //   - `header:"Name"` - binds from HTTP headers
 //   - `cookie:"name"` - binds from HTTP cookies
 //   - `json:"name"` - binds from JSON request body (application/json)
-//   - `form:"name"` - binds from form data (application/x-www-form-urlencoded or multipart/form-data)
 //   - `file:"name"` - binds file uploads from multipart/form-data
 //
 // Supported field types include:

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/struct0x/hx"
+	"github.com/struct0x/hx/internal"
 )
 
 // AttrsFunc extracts additional slog attributes from the request context.
@@ -34,15 +35,22 @@ func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 		return func(ctx context.Context, r *http.Request) error {
 			start := time.Now()
 			err := next(ctx, r)
+			duration := time.Since(start)
+
+			_, rwRead := internal.PeekResponseWriter(ctx)
 
 			attrs := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
-				"status", statusFromErr(err),
-				"duration", time.Since(start),
+				"duration", duration,
 			}
 			if cause := errors.Unwrap(err); cause != nil {
 				attrs = append(attrs, "cause", cause)
+			}
+			if rwRead.Load() {
+				attrs = append(attrs, "hijacked", "true")
+			} else {
+				attrs = append(attrs, "status", statusFromErr(err))
 			}
 
 			for _, fn := range extras {
@@ -52,9 +60,9 @@ func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 			}
 
 			switch status := statusFromErr(err); {
-			case status >= 500:
+			case status >= 500 && !rwRead.Load():
 				log.ErrorContext(ctx, "request", attrs...)
-			case status >= 400:
+			case status >= 400 && !rwRead.Load():
 				log.WarnContext(ctx, "request", attrs...)
 			default:
 				log.InfoContext(ctx, "request", attrs...)

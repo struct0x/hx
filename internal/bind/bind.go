@@ -112,7 +112,7 @@ func Bind(r *http.Request, dst any, opts ...Opt) error {
 			needQuery = true
 		case srcJSON:
 			needJSON = true
-		case srcFile, srcForm:
+		case srcFile:
 			needMultipart = true
 		default:
 			continue
@@ -215,8 +215,6 @@ func bindField(
 		return bindFromJSON(jsonMap, fi.tagValue, fi.value)
 	case srcFile:
 		return bindFromFile(r, fi.tagValue, fi.value)
-	case srcForm:
-		return bindFromForm(r, fi.tagValue, fi.value)
 	default:
 		return fmt.Errorf("unsupported source %v", fi.src)
 	}
@@ -315,26 +313,6 @@ func bindFromFile(r *http.Request, name string, dst reflect.Value) error {
 		return nil
 	}
 	return fmt.Errorf("unsupported file field type %s", dst.Type())
-}
-
-func bindFromForm(r *http.Request, name string, dst reflect.Value) error {
-	if err := r.ParseForm(); err != nil {
-		return fmt.Errorf("parsing form: %w", err)
-	}
-
-	if dst.Kind() == reflect.Slice {
-		vals := r.PostForm[name]
-		if len(vals) == 0 {
-			return nil
-		}
-		return setSliceFromStrings(vals, dst)
-	}
-
-	s := r.PostForm.Get(name)
-	if s == "" {
-		return nil
-	}
-	return setFromString(s, dst)
 }
 
 func setFromString(s string, dst reflect.Value) error {

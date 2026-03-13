@@ -35,10 +35,14 @@ type Response = out.Response
 // Example usage:
 //
 //	hx.HandlerFunc(func(ctx context.Context, r *http.Request) error {
-//	    // Handle the request
-//	    return nil // or return an error
+//	    // HandleFunc the request
+//	    return hx.Ok("Hello, World!")
 //	})
 type HandlerFunc func(ctx context.Context, r *http.Request) error
+
+type Handler interface {
+	ServeHX(ctx context.Context, r *http.Request) error
+}
 
 // Mux is an interface that wraps the http.Handler.
 type Mux interface {
@@ -59,9 +63,9 @@ type Mux interface {
 //	    hx.WithMiddleware(loggingMiddleware),
 //	)
 //
-//	// Handle requests
-//	hx.Handle("/api/users", func(ctx context.Context, r *http.Request) error {
-//	    // Handle the request
+//	// HandleFunc requests
+//	hx.HandleFunc("/api/users", func(ctx context.Context, r *http.Request) error {
+//	    // HandleFunc the request
 //	    return nil
 //	})
 //
@@ -73,15 +77,18 @@ type HX struct {
 	mids       []Middleware
 	prefix     string
 	production bool
+	routes     *[]RouteInfo
 
 	problemInstanceGetter func(ctx context.Context) string
 }
 
 // New creates a new HX instance.
 func New(opts ...Opt) *HX {
+	routes := make([]RouteInfo, 0)
 	hx := &HX{
 		logger: slog.Default(),
 		mux:    http.DefaultServeMux,
+		routes: &routes,
 	}
 
 	for _, o := range opts {
@@ -95,12 +102,48 @@ func (h *HX) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-// Handle registers a new request handler with the given pattern and middleware.
-func (h *HX) Handle(pattern string, handler HandlerFunc, mids ...Middleware) {
+// HandleFunc registers a new request handler with the given pattern and route options.
+// Options can be Middleware values or a Doc describing the route for spec generation.
+func (h *HX) HandleFunc(pattern string, handler HandlerFunc, opts ...RouteOpt) {
+	var mids []Middleware
+	var doc *RouteDoc
+	for _, opt := range opts {
+		switch o := opt.(type) {
+		case Middleware:
+			mids = append(mids, o)
+		case docOpt:
+			d := o.d
+			doc = &d
+		}
+	}
+
 	all := make([]Middleware, len(h.mids), len(h.mids)+len(mids))
 	copy(all, h.mids)
 	all = append(all, mids...)
-	h.mux.Handle(buildPattern(h.prefix, pattern), h.handle(chain(handler, all)))
+
+	full := buildPattern(h.prefix, pattern)
+	method, path := splitPattern(full)
+	*h.routes = append(*h.routes, RouteInfo{Method: method, Path: path, Doc: doc})
+
+	h.mux.Handle(full, h.handle(chain(handler, all)))
+}
+
+func (h *HX) Handle(pattern string, handler Handler, mids ...Middleware) {
+	var doc *RouteDoc
+	if documented, ok := handler.(Documented); ok {
+		docs := documented.Doc()
+		doc = &docs
+	}
+
+	all := make([]Middleware, len(h.mids), len(h.mids)+len(mids))
+	copy(all, h.mids)
+	all = append(all, mids...)
+
+	full := buildPattern(h.prefix, pattern)
+	method, path := splitPattern(full)
+	*h.routes = append(*h.routes, RouteInfo{Method: method, Path: path, Doc: doc})
+
+	h.mux.Handle(full, h.handle(chain(handler.ServeHX, all)))
 }
 
 // Group creates a sub-router sharing the same mux, with the given path prefix
@@ -109,11 +152,11 @@ func (h *HX) Handle(pattern string, handler HandlerFunc, mids ...Middleware) {
 // Example:
 //
 //	api := server.Group("/api/v1", authMiddleware)
-//	api.Handle("POST /users", createUserHandler)   // registers "POST /api/v1/users"
-//	api.Handle("/orders", listOrdersHandler)        // registers "/api/v1/orders"
+//	api.HandleFunc("POST /users", createUserHandler)   // registers "POST /api/v1/users"
+//	api.HandleFunc("/orders", listOrdersHandler)        // registers "/api/v1/orders"
 //
 //	admin := api.Group("/admin", adminOnlyMiddleware)
-//	admin.Handle("/stats", statsHandler)            // registers "/api/v1/admin/stats"
+//	admin.HandleFunc("/stats", statsHandler)            // registers "/api/v1/admin/stats"
 func (h *HX) Group(prefix string, mids ...Middleware) *HX {
 	inherited := make([]Middleware, len(h.mids), len(h.mids)+len(mids))
 	copy(inherited, h.mids)
@@ -123,6 +166,7 @@ func (h *HX) Group(prefix string, mids ...Middleware) *HX {
 		prefix:                h.prefix + prefix,
 		mids:                  append(inherited, mids...),
 		production:            h.production,
+		routes:                h.routes,
 		problemInstanceGetter: h.problemInstanceGetter,
 	}
 }
@@ -210,9 +254,9 @@ func (h *HX) handle(handler HandlerFunc) http.Handler {
 			}
 			w.WriteHeader(resp.StatusCode)
 
-			switch body := resp.Body.(type) {
-			case io.Reader:
-				_, err := io.Copy(w, body)
+			r, isReader := resp.Body.(io.Reader)
+			if isReader {
+				_, err := io.Copy(w, r)
 				if err != nil {
 					h.logger.ErrorContext(ctx, "hx: error copying response body", "error", err)
 					return

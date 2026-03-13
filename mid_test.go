@@ -118,7 +118,7 @@ func TestAdaptMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := hx.New(hx.WithCustomMux(http.NewServeMux()))
-			server.Handle("/", tt.handler, hx.AdaptMiddleware(tt.middleware))
+			server.HandleFunc("/", tt.handler, hx.AdaptMiddleware(tt.middleware))
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			w := httptest.NewRecorder()

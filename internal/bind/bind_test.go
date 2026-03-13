@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -297,35 +296,6 @@ func TestBind(t *testing.T) {
 			},
 		},
 		{
-			name: "form_data",
-			setup: func() *http.Request {
-				form := url.Values{}
-				form.Set("username", "alice")
-				form.Set("email", "alice@example.com")
-				form.Add("interests", "coding")
-				form.Add("interests", "music")
-				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(form.Encode()))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				return req
-			},
-			run: func(t *testing.T, req *http.Request, opts []Opt) {
-				type target struct {
-					Username  string   `form:"username"`
-					Email     string   `form:"email"`
-					Interests []string `form:"interests"`
-				}
-				var dst target
-				err := Bind(req, &dst, opts...)
-
-				checkAll(t, &dst, err,
-					checkNoError[target],
-					checkField[target]("Username", "alice"),
-					checkField[target]("Email", "alice@example.com"),
-					checkSliceField[target]("Interests", []string{"coding", "music"}),
-				)
-			},
-		},
-		{
 			name: "multipart_file_upload",
 			setup: func() *http.Request {
 				body := &bytes.Buffer{}
@@ -343,8 +313,7 @@ func TestBind(t *testing.T) {
 			},
 			run: func(t *testing.T, req *http.Request, opts []Opt) {
 				type target struct {
-					Avatar      []*multipart.FileHeader `file:"avatar"`
-					Description string                  `form:"description"`
+					Avatar []*multipart.FileHeader `file:"avatar"`
 				}
 				var dst target
 				err := Bind(req, &dst, opts...)
@@ -352,7 +321,6 @@ func TestBind(t *testing.T) {
 				checkAll(t, &dst, err,
 					checkNoError[target],
 					checkFieldNotNil[target]("Avatar"),
-					checkField[target]("Description", "My avatar"),
 				)
 			},
 		},

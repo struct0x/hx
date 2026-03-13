@@ -12,14 +12,14 @@ import (
 	"github.com/struct0x/hx/hxmid"
 )
 
-func newServer(t *testing.T, handler hx.HandlerFunc, mids ...hx.Middleware) *httptest.Server {
+func newServer(t *testing.T, handler hx.HandlerFunc, mids ...hx.RouteOpt) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	server := hx.New(
 		hx.WithCustomMux(mux),
 		hx.WithProductionMode(true),
 	)
-	server.Handle("/", handler, mids...)
+	server.HandleFunc("/", handler, mids...)
 	return httptest.NewServer(mux)
 }
 

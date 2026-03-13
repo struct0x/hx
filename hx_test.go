@@ -470,7 +470,7 @@ func TestHX(t *testing.T) {
 				}),
 				hx.WithCustomMux(http.NewServeMux()),
 			)
-			server.Handle("/"+url.PathEscape(tt.name), tt.handler)
+			server.HandleFunc("/"+url.PathEscape(tt.name), tt.handler)
 
 			// Create a test request
 			req := httptest.NewRequest(tt.method, "/"+url.PathEscape(tt.name), tt.body)
@@ -519,7 +519,7 @@ func TestHX_Group(t *testing.T) {
 			name: "prefix_is_applied",
 			setup: func(server *hx.HX) {
 				api := server.Group("/api/v1")
-				api.Handle("/users", func(ctx context.Context, r *http.Request) error {
+				api.HandleFunc("/users", func(ctx context.Context, r *http.Request) error {
 					return hx.OK("users")
 				})
 			},
@@ -534,7 +534,7 @@ func TestHX_Group(t *testing.T) {
 			name: "method_pattern_is_handled",
 			setup: func(server *hx.HX) {
 				api := server.Group("/api/v1")
-				api.Handle("POST /orders", func(ctx context.Context, r *http.Request) error {
+				api.HandleFunc("POST /orders", func(ctx context.Context, r *http.Request) error {
 					return hx.Created("order created")
 				})
 			},
@@ -550,7 +550,7 @@ func TestHX_Group(t *testing.T) {
 			setup: func(server *hx.HX) {
 				api := server.Group("/api/v1")
 				admin := api.Group("/admin")
-				admin.Handle("/stats", func(ctx context.Context, r *http.Request) error {
+				admin.HandleFunc("/stats", func(ctx context.Context, r *http.Request) error {
 					return hx.OK("stats")
 				})
 			},
@@ -566,7 +566,7 @@ func TestHX_Group(t *testing.T) {
 			setup: func(server *hx.HX) {
 				api := server.Group("/api/v1")
 				admin := api.Group("/admin")
-				admin.Handle("DELETE /users", func(ctx context.Context, r *http.Request) error {
+				admin.HandleFunc("DELETE /users", func(ctx context.Context, r *http.Request) error {
 					return hx.OK("deleted")
 				})
 			},
@@ -611,7 +611,7 @@ func TestHX_Group_Middleware(t *testing.T) {
 		var calls []string
 		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
 		api := server.Group("/api", recordingMiddleware("group", &calls))
-		api.Handle("/ping", noop)
+		api.HandleFunc("/ping", noop)
 
 		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/ping", nil))
 
@@ -625,7 +625,7 @@ func TestHX_Group_Middleware(t *testing.T) {
 		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
 		api := server.Group("/api", recordingMiddleware("parent", &calls))
 		admin := api.Group("/admin", recordingMiddleware("child", &calls))
-		admin.Handle("/stats", noop)
+		admin.HandleFunc("/stats", noop)
 
 		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/admin/stats", nil))
 
@@ -638,7 +638,7 @@ func TestHX_Group_Middleware(t *testing.T) {
 		var calls []string
 		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
 		api := server.Group("/api", recordingMiddleware("group", &calls))
-		api.Handle("/ping", noop, recordingMiddleware("handler", &calls))
+		api.HandleFunc("/ping", noop, recordingMiddleware("handler", &calls))
 
 		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/ping", nil))
 
@@ -651,8 +651,8 @@ func TestHX_Group_Middleware(t *testing.T) {
 		var calls []string
 		server := hx.New(hx.WithCustomMux(http.NewServeMux()))
 		api := server.Group("/api")
-		api.Group("/a", recordingMiddleware("mid-a", &calls)).Handle("/ping", noop)
-		api.Group("/b").Handle("/ping", noop)
+		api.Group("/a", recordingMiddleware("mid-a", &calls)).HandleFunc("/ping", noop)
+		api.Group("/b").HandleFunc("/ping", noop)
 
 		server.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/b/ping", nil))
 
@@ -669,7 +669,7 @@ func TestHX_HijackResponseWriter(t *testing.T) {
 		}),
 		hx.WithCustomMux(http.NewServeMux()),
 	)
-	server.Handle("/", func(ctx context.Context, r *http.Request) error {
+	server.HandleFunc("/", func(ctx context.Context, r *http.Request) error {
 		rw := hx.HijackResponseWriter(ctx)
 
 		rw.Write([]byte("hello"))

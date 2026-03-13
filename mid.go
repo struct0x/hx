@@ -23,6 +23,8 @@ import (
 //	}
 type Middleware func(HandlerFunc) HandlerFunc
 
+func (Middleware) routeOpt() {}
+
 // AdaptMiddleware converts standard net/http middleware into a hx Middleware.
 //
 // It works correctly for middleware that:
