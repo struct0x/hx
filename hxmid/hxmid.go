@@ -30,33 +30,37 @@ type AttrsFunc func(ctx context.Context, r *http.Request) []slog.Attr
 //	        slog.String("trace_id", trace.SpanFromContext(ctx).SpanContext().TraceID().String()),
 //	    }
 //	})
+//
+// AttrsFunc are called before the request is handled, so they can access the request.
 func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 	return func(next hx.HandlerFunc) hx.HandlerFunc {
 		return func(ctx context.Context, r *http.Request) error {
-			start := time.Now()
-			err := next(ctx, r)
-			duration := time.Since(start)
-
-			_, rwRead := internal.PeekResponseWriter(ctx)
-
 			attrs := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
-				"duration", duration,
-			}
-			if cause := errors.Unwrap(err); cause != nil {
-				attrs = append(attrs, "cause", cause)
-			}
-			if rwRead.Load() {
-				attrs = append(attrs, "hijacked", "true")
-			} else {
-				attrs = append(attrs, "status", statusFromErr(err))
 			}
 
 			for _, fn := range extras {
 				for _, a := range fn(ctx, r) {
 					attrs = append(attrs, a)
 				}
+			}
+
+			start := time.Now()
+			err := next(ctx, r)
+			duration := time.Since(start)
+			attrs = append(attrs, "duration", duration)
+
+			_, rwRead := internal.PeekResponseWriter(ctx)
+
+			if cause := errors.Unwrap(err); cause != nil {
+				attrs = append(attrs, "cause", cause)
+			}
+
+			if rwRead.Load() {
+				attrs = append(attrs, "hijacked", "true")
+			} else {
+				attrs = append(attrs, "status", statusFromErr(err))
 			}
 
 			switch status := statusFromErr(err); {
