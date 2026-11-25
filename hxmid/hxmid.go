@@ -19,7 +19,7 @@ import (
 // Use this to attach trace IDs, user IDs, or any other contextual fields to log entries.
 type AttrsFunc func(ctx context.Context, r *http.Request) []slog.Attr
 
-// Logger logs each request with its method, path, status code, and duration.
+// Logger logs each request with its method, pattern, status code, and duration.
 // Requests resulting in 5xx are logged at Error level, 4xx at Warn, everything
 // else at Info.
 //
@@ -37,7 +37,7 @@ func Logger(log *slog.Logger, extras ...AttrsFunc) hx.Middleware {
 		return func(ctx context.Context, r *http.Request) error {
 			attrs := []any{
 				"method", r.Method,
-				"path", r.URL.Path,
+				"pattern", r.Pattern,
 			}
 
 			for _, fn := range extras {
@@ -86,7 +86,7 @@ func Recoverer(log *slog.Logger) hx.Middleware {
 				if rec := recover(); rec != nil {
 					log.ErrorContext(ctx, "hxmid: panic recovered",
 						"method", r.Method,
-						"path", r.URL.Path,
+						"pattern", r.Pattern,
 						"panic", rec,
 						"stack", string(debug.Stack()),
 					)

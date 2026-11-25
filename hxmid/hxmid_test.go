@@ -1,6 +1,7 @@
 package hxmid_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"net/http"
@@ -12,14 +13,14 @@ import (
 	"github.com/struct0x/hx/hxmid"
 )
 
-func newServer(t *testing.T, handler hx.HandlerFunc, mids ...hx.RouteOpt) *httptest.Server {
+func newServer(t *testing.T, pattern string, handler hx.HandlerFunc, mids ...hx.RouteOpt) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	server := hx.New(
 		hx.WithCustomMux(mux),
 		hx.WithProductionMode(true),
 	)
-	server.HandleFunc("/", handler, mids...)
+	server.HandleFunc(pattern, handler, mids...)
 	return httptest.NewServer(mux)
 }
 
@@ -69,7 +70,7 @@ func TestLogger(t *testing.T) {
 				})
 			}}
 
-			srv := newServer(t, tt.handler, hxmid.Logger(slog.New(h)))
+			srv := newServer(t, "/", tt.handler, hxmid.Logger(slog.New(h)))
 			defer srv.Close()
 
 			resp, err := http.Get(srv.URL + "/")
@@ -98,7 +99,7 @@ func TestLogger_ExtraAttrs(t *testing.T) {
 		})
 	}}
 
-	srv := newServer(t,
+	srv := newServer(t, "GET /t/{token}",
 		func(ctx context.Context, r *http.Request) error { return hx.OK("ok") },
 		hxmid.Logger(slog.New(h),
 			func(ctx context.Context, r *http.Request) []slog.Attr {
@@ -111,7 +112,7 @@ func TestLogger_ExtraAttrs(t *testing.T) {
 	)
 	defer srv.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/t/secret123", nil)
 	req.Header.Set("X-User-ID", "user-42")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -134,19 +135,28 @@ func TestLogger_ExtraAttrs(t *testing.T) {
 	if v, ok := find("user_id"); !ok || v != "user-42" {
 		t.Errorf("user_id: got %q, want %q", v, "user-42")
 	}
+	if v, ok := find("pattern"); !ok || v != "GET /t/{token}" {
+		t.Errorf("pattern: got %q, want %q", v, "GET /t/{token}")
+	}
+	for _, a := range gotAttrs {
+		if strings.Contains(a.Value.String(), "secret123") {
+			t.Errorf("attribute %q contains path value: %q", a.Key, a.Value.String())
+		}
+	}
 }
 
 func TestRecoverer(t *testing.T) {
 	t.Run("recovers_panic_and_returns_500", func(t *testing.T) {
-		srv := newServer(t,
+		var buf bytes.Buffer
+		srv := newServer(t, "GET /t/{token}",
 			func(ctx context.Context, r *http.Request) error {
 				panic("something exploded")
 			},
-			hxmid.Recoverer(slog.Default()),
+			hxmid.Recoverer(slog.New(slog.NewTextHandler(&buf, nil))),
 		)
 		defer srv.Close()
 
-		resp, err := http.Get(srv.URL + "/")
+		resp, err := http.Get(srv.URL + "/t/secret123")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,10 +165,18 @@ func TestRecoverer(t *testing.T) {
 		if resp.StatusCode != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", resp.StatusCode)
 		}
+
+		out := buf.String()
+		if !strings.Contains(out, `pattern="GET /t/{token}"`) {
+			t.Errorf("log output missing pattern attribute: %s", out)
+		}
+		if strings.Contains(out, "secret123") {
+			t.Errorf("log output contains path value: %s", out)
+		}
 	})
 
 	t.Run("does_not_interfere_with_normal_handler", func(t *testing.T) {
-		srv := newServer(t,
+		srv := newServer(t, "/",
 			func(ctx context.Context, r *http.Request) error { return hx.OK("ok") },
 			hxmid.Recoverer(slog.Default()),
 		)
@@ -237,7 +255,7 @@ func TestRequireJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newServer(t, noop, hxmid.RequireJSON())
+			srv := newServer(t, "/", noop, hxmid.RequireJSON())
 			defer srv.Close()
 
 			req, _ := http.NewRequest(tt.method, srv.URL+"/", strings.NewReader("{}"))
